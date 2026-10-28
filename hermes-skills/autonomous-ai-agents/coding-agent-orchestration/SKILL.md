@@ -40,6 +40,10 @@ Hermes must do the heavy lifting **before** spawning the agent:
   - For single-shot autonomous builds: `codex exec --yolo "<concise_instruction>"`.
   - For long-running tasks: Run in background with `pty=true`, `background=true`, and `notify=true`.
   - Pass the concrete tasks file or refer to `README.md` rather than pasting giant raw text blobs in the prompt.
+- **Immediate Dispatch & Fast Response (Anti-Hanging Rule)**:
+  - When delegated multi-part or parallel background work, dispatch the background workers promptly.
+  - Do NOT stay locked in synchronous foreground loops trying to solve tasks before delegating.
+  - Return an immediate status summary to the user (worker PIDs, session IDs, target directories), and perform subsequent updates asynchronously.
 - **Model & Reasoning Control**:
   - Respect requested model configurations (e.g. `-m gpt-5.6-luna -c model_reasoning_effort=xhigh`).
 

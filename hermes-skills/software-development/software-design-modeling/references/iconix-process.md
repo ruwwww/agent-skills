@@ -247,7 +247,81 @@ To ensure maximum consistency, readability, and immediate grading clarity across
 ```
 - **Bidirectional Entity Communication:** The validation/processing controller queries `Entity 1` (`meload data...` downward) and receives verification (`mengembalikan status...` upward).
 - **Secondary Data Loading:** When the destination screen requires auxiliary context (e.g. `HomePage - Main` rendering avatar and username from `Profil Pengguna`), route `Entity 2` $\to$ `Ctrl: Muat Data` $\to$ `Boundary 2`.
-- **Canvas Presentation:** Use a clean dark charcoal theme (`#111113`) with crisp white outlines (`#FFFFFF`) and header author metadata for high-contrast academic defense.
+### 5. Architectural Diversity vs Rigid Cookie-Cutter Layouts
+- **Beware the "Too Uniform" Anti-Pattern:** Do NOT force every use case into an identical 5-box linear pipeline. Each use case reflects its authentic Figma storyboard and business logic:
+  - Multi-step wizards (e.g. `Top Up`) span 3 boundaries (`TopUpPage` -> `PaymentMethodPage` -> `PaymentInstructionPage`) with multiple payment channel branches (`BCA`, `BTN`, `ApplePay`).
+  - Query/Filter use cases (e.g. `Traffic News`) branch between filtering specialized subclasses (`Accidents`, `Flood`, etc.) versus drilling into full article details.
+  - Side-effect use cases (e.g. `Live Report`) save incident data to `live report` while invoking reward services to update contributor points in `Level`.
+  - Hub use cases (e.g. `Chat`, `Police Report`) act as dispatchers branching into messaging, media upload, voice calls, or emergency SOS calling.
+- **External Systems as Actors, Not Boundaries:** External third parties (e.g. `Bank / Payment Gateway`, `Police Dispatcher`) MUST be modeled with the Actor symbol (`<<Actor>>`), never as internal boundary screens.
+- **Read-Only Queries Must Query, Never Save:** In inquiry use cases (e.g. `Melihat Histori Transaksi`, `Mengakses Leaderboard`), operations to entities must be strictly read/query operations (`load`, `read`, `query`). Storing or mutating data (`Simpan Data...`) in a view-only use case is a fatal modeling error.
+- **Entity Invocations Flow from Controller to Entity:** Data entities are passive data stores; arrows originate from the Controller to the Entity (`Controller -> Entity`), not the reverse.
+
+## 8. Sequence Diagramming from BCE Models (Phase 3 Detailed Design)
+
+Sequence Diagrams allocate dynamic responsibilities and message sequences across classes. When synthesizing a Sequence Diagram from a BCE Robustness model:
+1. **Lifelines & Stereotypes:**
+   - Map each robustness participant 1:1 to a sequence lifeline: `Actor` (`옷`), Boundaries (`├○`), Controllers (`○↺`), and Entities (`○̲`).
+   - Include web/framework routing lifelines (e.g. `route`) when modeling MVC controller action dispatching.
+2. **Complete Return Chain to Actor:**
+   - Every request flow initiated by the Actor must complete its return chain all the way back to the Actor.
+   - Flow: `Entities` -> `Controller` -> `route` -> `Boundary (View)` -> `Actor`.
+   - Never leave activation lifelines dangling; terminate execution bars cleanly as each method or return response completes.
+3. **Combined Fragments (`alt`, `opt`, `loop`):**
+   - Use explicit condition guards enclosed in brackets (e.g. `alt "[Ke topUp_Main]"`).
+4. **PlantUML Sequence Styling for BCE:**
+   ```plantuml
+   skinparam sequence {
+       ArrowColor #000000
+       ActorBorderColor #000000
+       LifeLineBorderColor #000000
+       LifeLineBackgroundColor #80D8FF
+       ParticipantBorderColor #000000
+       ParticipantBackgroundColor #80D8FF
+   }
+   ```
+
+## 9. Laravel PHP Sequence Diagram Checklist Standards
+
+When modeling Sequence Diagrams under academic / technical guidelines for Laravel PHP architectures (e.g. PPPL ITS / Pak Faizal Johan):
+1. **First & Last Steps:**
+   - **1st step:** Must strictly originate from **Actor to Boundary** (e.g. `User -> home_main : 1: Buka Halaman Utama`).
+   - **Last step:** Must return from **Boundary to Actor** (e.g. `police_report -> User : 4.1.1.1: Tampilkan View Kembali`).
+2. **Lifeline Placement & Footbox Control:**
+   - **Top-Only Placement:** All lifelines (Actor, Boundary, Control, Entity) must appear strictly at the top of the canvas.
+   - **Hide Footbox in PlantUML:** Always specify `hide footbox` to suppress duplicate participant boxes at the bottom of the diagram, producing clean, open-ended lifeline tails.
+3. **Startpoint Strategy (Homepage vs Feature-Page Scoping):**
+   - **Textbook / Standard ICONIX:** Sequence diagrams start directly at the feature page, documenting prior steps in the *Pre-condition* text (e.g. *Pre-condition: User is on Police Report screen*).
+   - **Coursework / Full Traceability (Recommended for UI & Laravel Tasks):** Start the flow from **`home_main`** (or `HomePage`), modeling the intermediate navigation steps (`home_main` $\xrightarrow{GET /chat}$ `chat_page` $\xrightarrow{GET /police-report}$ `police_report` $\xrightarrow{GET /...}$ `feature_view`). This establishes 1:1 traceability against the Figma storyboard and demonstrates concrete Laravel routing traversal.
+4. **Laravel Architecture Conventions:**
+   - **`route` lifeline:** Always present to represent `routes/web.php` or `routes/api.php` dispatching HTTP verb endpoints (`GET /...`, `POST /...`).
+   - **Boundary naming:** Must use lowercase `snake_case` matching actual Blade view files (e.g. `home_main`, `chat_page`, `police_report`, `nearby_stations_info`, `safety_guidelines`).
+   - **Controller naming:** Must be explicit PascalCase class names (e.g. `PoliceReportController`, `HistoriTransaksiController`).
+   - **Arrow to Controller:** Must represent concrete PHP **method names** (e.g. `getSafetyGuidelines()`, `getNearestStations(latitude, longitude)`), NEVER narrative logic steps.
+   - **Data Object naming:** Must be **table-name ready** in lowercase `snake_case` (e.g. `panduan_keselamatan`, `stasiun_polisi`, `laporan_polisi`, `transaksi`).
+5. **Strict Alternate Sequence (`alt`) Rule:**
+   - The `alt` frame must **ONLY wrap unexpected flows** (errors, validation failures, not-found states).
+   - The **normal / expected flow must remain in the standard area** outside the `alt` fragment (never split an `alt` into a failure branch and normal branch unless both are genuine alternatives).
+
+## 10. Design Class Diagrams & Domain Model Evolution
+
+In detailed design, the Domain Model evolves into a full Design Class Diagram:
+1. **Layered Architectural Partitioning:**
+   - Group classes into distinct UML package containers:
+     - `Application Layer (Controllers)`: Pale blue fill (`#E8F4FD`), housing stateless `<<Control>>` classes with public API actions returning typed `Response`.
+     - `Domain Layer (Entities & Models)`: Crisp white fill, housing persistent `<<Entity>>` classes with private attributes (`-`) and public domain methods (`+`).
+2. **Modular Subsystems for Readability:**
+   - To avoid unreadable panoramic sprawl, partition large systems into thematic subsystems (e.g., Auth & Profile, Finance & Payment, Traffic & Live Report, Communication & Police).
+3. **Strict Separation of Data vs UI in Domain Models:**
+   - Do NOT branch unrelated system features (e.g., Police Reports, Safety Guidelines, Payment Methods) off a single UI screen hub (e.g., `Chat` or `ProfilePage`) just because the prototype UI has navigation buttons inside that screen.
+   - Model true domain ownership: `Akun` owns `ProfilPengguna`, `KeamananAkun`, and `MetodePembayaran`; `LaporanPolisi` owns `StasiunPolisi` and `PanduanKeselamatan`.
+4. **Attributes vs Classes vs Relationships:**
+   - Attributes belong INSIDE the class box, not as standalone boxes with `has-a` links.
+   - Use `is-a` (hollow triangle $\Delta$) strictly for subclass inheritance / specialization. Never label an `is-a` arrow with "has a".
+   - Use `has-a` (diamond $\diamond$) for aggregation / composition between independent complex domain entities.
+   - Display-only / read-only screens in UI prototypes (As-Is Figma) still represent real domain entities and must be retained in the domain model as queryable entities.
+
+
 
 
 

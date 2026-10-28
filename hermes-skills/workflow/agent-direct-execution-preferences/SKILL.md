@@ -31,6 +31,7 @@ updated: 2026-08-29
 - Delaying response to the user when intermediate synchronous data (like 2FA/MFA challenge codes) is ready: output the required code/data immediately without waiting for background loops to timeout or complete
 - Getting stuck in heavy background download/transcription/model loading loops when the user asks for quick task selection or "paket paling gampang": pick the best/simplest option immediately and deliver the result fast without stalling
 - Forcing HTML rendering, HTML slide decks, or complex display wrappers when asked for an EDA notebook; avoid embedding pre-rendered PNGs via `display(Image(...))` instead of real native matplotlib/seaborn code cells
+- Running unconstrained recursive filesystem scans (`grep -rnw`, `rg` without file/depth limits) across root or massive parent directories (`/mnt/data`, `/home/kuroko`) that inevitably hit 180s command timeouts on multi-terabyte model weights and datasets. Always target explicit subdirectories or use shallow search (`find -maxdepth 2`, `search_files` with specific glob).
 
 ## User Preferences - Embedded
 
@@ -43,7 +44,13 @@ updated: 2026-08-29
 
 ### Fast Model Deployment Discipline ("Tinggal Clone Download Deploy")
 > "lama bgt cokkk tinggal clone download deploy"
+> "lama banget ... it should be done in just 10 s"
 
+- **Zero Broad Scans on Multi-Terabyte Storage**: Never run unconstrained recursive text searches (`grep -rnw`, recursive ripgrep across whole drives) across `/mnt/data` or `/home/kuroko`. These volumes house terabytes of model weights, safetensors, checkpoints, and git trees, which inevitably cause 180s command timeouts. Always inspect specific folders or check binary `--help` directly.
+- **Fast Serving Launch (<10s Execution)**: When asked to launch/serve an existing model or runtime ("nyalain ninfer..."):
+  1. Check the binary `--help` and verify target artifact path directly (`/mnt/data/models/*.ninfer`).
+  2. Handle VRAM constraints immediately (e.g. `curl -X POST http://127.0.0.1:8188/free` for ComfyUI or kill stale processes).
+  3. Launch the process immediately with optimal flags in the background (`terminal(background=true)`) and verify readiness via `/health`—never stall hunting past invocation logs or bash histories across disks.
 - **Direct Deployment Over Stalling**: When asked to host or deploy an open-source model repo to network via Gradio/FastAPI ("host repo to network using gradio"), execute the sequence directly without pausing to theorize or optimize upfront:
   1. **Clone & Inspect**: Clone repo to target storage (e.g. `/mnt/data`), inspect minimal runtime dependencies.
   2. **Multi-Stream Resilient Downloads**: Never rely on single-connection python HuggingFace downloads which throttle to 2–5 MB/s on CAS/CDN. Immediately batch download target weights using multi-connection `aria2c -c -j 3 -x 16 -s 16 -k 1M -i urls.txt` to saturate the link and guarantee resume capability.
@@ -86,7 +93,13 @@ updated: 2026-08-29
 - Don't stop at "it should work" - prove it works
 - When experiments fail: diagnose, fix, retry until success
 
-### Bare-Metal & Upstream Model Runtime Discipline (Zero UI / ComfyUI Shims)
+- Bare-Metal & Upstream Model Runtime Discipline (Zero UI / ComfyUI Shims)
+- **Always Choose Official Upstream Formulation Over Ad-Hoc Shortcuts**:
+  > "lain kali kalau ada choice opsi, pastikan pilih yang sesuai desain resmi apapun itu."
+  When reproducing, verifying, or implementing methods from research papers or official repositories (e.g. Priming, Flow Matching, Distillation, OT):
+  - **Never take heuristic ad-hoc shortcuts** that skip official components (e.g. calculating raw Sinkhorn OT directly on flattened latent vectors instead of using the paper's official frozen semantic feature extractors / VJP backward passes).
+  - When given or presenting design choices/options, **always prioritize and default to the official upstream design** without compromising theoretical integrity for superficial speed.
+  - If a shortcut is used, it frequently destabilizes the objective (e.g. mode distortion, severe waxy textures, chromatic noise, or color blowout) and wastes training compute.
 > "did i said anything about using ComfyUI as runtime? i hope you didnt told codex to optimize from the ComfyUI runtime"
 > "Tolol2 kok malah pakai comfyui runtime sih. Kan sudah kubilang pakai runtime original bawaan AuK"
 
@@ -225,4 +238,5 @@ See `references/faruq-legal-dataset-eda.md` for:
 
 ## References
 
+- Priming Model Reproduction & Latent-Space Porting Lessons (2026-10-16): See `references/priming-two-stage-lessons.md` for the official upstream formulation rule, avoiding raw latent Sinkhorn OT pitfalls (mode collapse/waxy plastic textures), and why feature-space OT (DINOv2) + ODE integration outperforms direct 1-step jumps.
 - LoRA Training Curation, Epoch Overfitting & Prompt Delivery (2026-09-22): See `references/lora-curation-and-prompt-delivery.md` for direct prompt text delivery rules (no unprompted auto-generations), batch conversion of intermediate epochs (Epochs 5–9) to ComfyUI dropdowns, small-dataset overfitting dynamics (Epoch 5 sweet-spot vs Epoch 10 burning), cryptid/collision-free trigger tokens, Hugging Face curated registry synchronization (`ruwwww/diffusion_loras` with pure character prompts, no forced style anchors), non-destructive ComfyUI VRAM freeing via `POST /free`, and sub-3-second direct ONNX tagger inference.

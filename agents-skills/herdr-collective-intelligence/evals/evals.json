@@ -1,0 +1,38 @@
+{
+  "skill_name": "herdr-collective-intelligence",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Use Herdr and two OpenCode agents to investigate this repo. One of the models is labelled free. Before delegating, check whether it is actually usable and what usage evidence is available. Have the agents investigate independently, then challenge each other's conclusions. Do not change files.",
+      "expected_output": "Checks current Herdr/OpenCode state and model metadata, distinguishes zero-cost metadata from quota certainty, uses at most one minimal probe if needed, sets bounded read-only independent agent tasks, asks for evidence and counterarguments, then synthesizes verified claims and uncertainty.",
+      "assertions": [
+        "Does not assume a free label proves unlimited or currently callable usage",
+        "Does not expose credentials or read auth files",
+        "Specifies independent tasks and read-only constraints",
+        "Requires evidence and adversarial review rather than majority voting"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I use Hermes and want to vibe-code a small feature with Herdr. Ask one agent to implement and another to review. The agents share a worktree. Keep the change controlled and tell me what was verified.",
+      "expected_output": "Checks current workspace and agents, assigns one implementation owner and one read-only reviewer, prevents overlapping edits, inspects the final diff, verifies only when requested or required, and reports paths and verification accurately.",
+      "assertions": [
+        "Checks shared workspace state before delegating",
+        "Prevents reviewer and implementer from editing the same files concurrently",
+        "Uses explicit bounded prompts and reads agent output",
+        "Does not claim verification that was not performed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Three agents all think a CTF artifact is a Skein hash. Use Herdr to continue logically without brute force, and make sure they do not anchor on the same guess.",
+      "expected_output": "Requests independent evidence-based examinations, asks agents to challenge the Skein assumption and identify discriminating observations, synthesizes facts versus hypotheses, and avoids brute force absent a narrowed hypothesis.",
+      "assertions": [
+        "Explicitly treats Skein as a hypothesis rather than a fact",
+        "Separates agent evidence sources or asks for blind independent analysis",
+        "Requests falsification and an economical next observation",
+        "Does not use consensus as proof"
+      ]
+    }
+  ]
+}

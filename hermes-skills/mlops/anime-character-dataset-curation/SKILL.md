@@ -26,6 +26,18 @@ Fixed-height sliding windows (e.g. 1,000px height with 700px step) arbitrarily c
 3. Group contiguous gutter rows $\ge 15\text{px}$ and split the 4,000px+ strip at gutter midpoints.
 4. Each panel represents an author-composed scene where full-body characters and flowing robes reside in one unsegmented canvas.
 
+### Webtoon Sliced Archives: Sliding Pair Seam Boundary Inspection
+Many webtoon rip archives (`.cbz`, `.zip`) contain pre-sliced vertical chunks (e.g. fixed ~1,100px height per image) rather than full unbroken strips. In such archives, characters often have heads on page $N$ and torsos/legs on page $N+1$ (or even $N+2$), causing single-page detectors to see only severed foreheads or headless bodies.
+- **Sliding Pair Buffer Strategy**:
+  - Maintain a bounded seam canvas between consecutive pages $N$ and $N+1$:  
+    $$\text{Canvas Seam} = [\text{Bottom } B\text{px of Page } N] + [\text{Top } B\text{px of Page } N+1]$$
+    where $B \approx 600\text{--}800\text{px}$ (e.g. $B=700\text{px}$).
+  - **Zero-Overlap Abutting Seam Verification**: Ripped webtoons typically follow a strict tile split with uniform width and zero vertical overlap between page $N$ bottom and page $N+1$ top. Verify with NCC or line continuity before complex warping.
+  - **Crossing Rule**: Run person detection on the seam canvas, but ONLY accept candidates where bounding box strictly crosses the seam cut: $y_0 < B < y_1$.
+  - **Intra-Page Safety**: During individual page scanning, suppress candidate bounding boxes touching extreme page borders ($y_0 \le 15\text{px}$ or $y_1 \ge H - 15\text{px}$) to avoid extracting fragmented cuts; the sliding seam buffer will reconstruct the complete subject whole.
+  - **Memory Efficiency**: Avoids stitching entire chapters (200+ pages) into RAM at once; memory footprint stays bounded to single 2-page seam slices.
+
+
 ## 2. Character Identification via CCIP
 
 - Model: `ccip-caformer-24-randaug-pruned` (`imgutils.metrics.ccip`).
@@ -66,6 +78,20 @@ To capture complete robes, dresses, sashes, and footwear without heuristic trunc
 
 ## 5. Intra-Framing Duplication & Dynamic Virtual Framing
 
+### Character Tagging SOP: Appearance Absorption vs. Dedicated Attire Triggers
+When preparing caption `.txt` files for character LoRAs:
+1. **Appearance (Intrinsic Physical Features) -> OMIT FROM CAPTIONS (ABSORB):**
+   - Permanent bodily anatomy, signature creature features, skin color, natural hair length/color, horn/tail/fin shapes, and facial features (e.g. `covered_eyes`, `mermaid`, `fish_tail`, `long_hair`, `white_hair`, `pointy_ears`, `breasts`, `navel`).
+   - By omitting these from caption text, no separate token steals cross-attention weight; the features bind **100% directly to the character trigger**. The trigger alone reliably reproduces the full character appearance without requiring lengthy descriptive prompts.
+2. **Attire & Props -> Dedicated Attire Triggers vs. Monolithic Tag Dropout:**
+   - **Multi-Attire Datasets:** When the character has distinct multiple outfits (e.g. `miabodysuit` vs casual hoodie, or `pulsar_suit` vs swimsuit), absorb the canonical signature attire into an explicit trigger token (compound binding with `keep_tokens = 2`), omitting the attire trigger on casual/nude images.
+   - **Monolithic / Single-Attire Datasets:** If the dataset features only a single canonical attire across all or nearly all images, **DO NOT create an artificial attire trigger**. Use a single character trigger (`keep_tokens = 1`), retain all attire/prop tags (`helmet`, `armor`, `trident`, `polearm`, `scales`) in the captions, and use **moderate tag dropout** (`--caption_tag_dropout_rate = 0.3 - 0.5`) across both attire and appearance descriptors.
+   - **Props Invariant:** Ensure signature weapons/props (`trident`, `polearm`, `weapon`) are never omitted from captions when visible.
+3. **Strict Artist Tag Prohibition:**
+   - **NEVER** inject artist tags (e.g. `@artist`, `drawn_by_*`) or web meta-tags (`watermark`, `sample`) into training dataset captions. Strip Danbooru artist strings entirely during caption generation. Artist style tags (e.g. `@ciloranko`, `@ratatatat74`) are applied strictly at inference/generation time.
+4. **Pre-Curated Retention Invariant:**
+   - Pre-curated or user-restored image archives (`staging_images/<concept>`) require **100% retention**. Do not drop or purge images (e.g. via automatic multi-person filters). If secondary characters appear, caption them instead of discarding the image.
+
 ### The Intra-Framing Duplicate Problem:
 When extracting both a Full-Body crop, a Cowboy shot, and a Close-up crop from the *exact same scene drawing*, the character's face and pose are repeated multiple times across the training set, causing epoch bias and overfitting.
 
@@ -77,6 +103,17 @@ When extracting both a Full-Body crop, a Cowboy shot, and a Close-up crop from t
    - When filtering by `portrait`, full-body images with valid face boxes remain visible and accessible.
    - The UI provides an on-the-fly `[Full Attire] ⟷ [Portrait Zoom]` viewer without creating duplicate files on disk.
 4. **On-the-Fly Export**: If a portrait-only LoRA is needed, crop to the face box during export without cluttering the master dataset with static twin crops.
+
+### Character & Attire Crop Disentanglement (Breaking Spatial Co-occurrence Bleed):
+When training a character with a signature outfit (e.g. `toolmia` + `miabodysuit`), if the head/face and outfit always appear together in full-scene crops, the model entangles the two, causing outfit bleed into casual prompts.
+- **Disentanglement Ratio**:
+  - **~40% Portrait / Face Crops**: Tagged with `[char_trigger], 1girl, solo, portrait, close-up, upper_body...` without the attire trigger. Teaches the model that identity resides solely in facial features, hair, and eyes.
+  - **~30% Torso / Attire Crops**: Tagged with `[attire_trigger], bodysuit, gloves, headless, crop...` without the character trigger. Teaches the model the clothing construct in isolation.
+  - **~30% Complete Upper Body / Cowboy Shot**: Tagged with both `[char_trigger]` and `[attire_trigger]`. Bridges identity and proportion.
+- **DeepGHS Detached BBoxes Pitfall**:
+  In `imgutils.detect`, functions return tuples containing the label and confidence:
+  - `detect_faces`, `detect_eyes`: `((x0, y0, x1, y1), label, conf)` — unpack as `[b for b, l, s in faces]`, NEVER `[b, s in faces]`.
+  - `detect_with_booru_yolo`: `((x0, y0, x1, y1), label, conf)` — unpack as `[b for b, l, s in booru]`.
 
 ## 6. Background Matting & Separation Model Landscape
 
@@ -92,6 +129,9 @@ When extracting both a Full-Body crop, a Cowboy shot, and a Close-up crop from t
 ## 7. Human-in-the-Loop Web UI Ergonomics
 
 Host a dedicated FastAPI curator server:
+- **Pre-Curated vs. Raw Archives Rule**:
+  - When the user directs you to prepare a staging folder containing an already curated/restored set of images (e.g. `/mnt/data/finetune-anima/staging_images/<concept>` where images are already hand-picked or cleaned): **DO NOT route it to Curator WebUI**. The user has already performed manual curation; proceed directly to tag generation (`smart_tagger` / WD14), trigger decoupling, `dataset.toml`, and training preparation.
+  - Reserve Curator WebUI strictly for raw, unfiltered comic/manhua strip extractions where candidate cuts need interactive visual screening and manual approval.
 - **Single-Key Hotkeys**:
   - `1` / `A`: Approve and advance.
   - `2` / `R`: Reject and advance.
@@ -101,7 +141,19 @@ Host a dedicated FastAPI curator server:
   - `T`: Run WD14 tagging.
 - **Dynamic BBox Overlay**: Toggle canvas bounding boxes for eyes, hands, and faces.
 - **Dynamic Portrait Toggle**: `[Full Attire] ⟷ [Portrait Zoom]` previewing face crops on the fly.
+- **Interactive Canvas Reader & Live Cropper Tool**:
+  - Expose original comic chapter/page anchors in item metadata (`chapter`, `page`).
+  - Provide an interactive reading modal with live drag-and-drop bounding box selection over the full unsegmented page (or stitched sliding seam pair).
+  - Include an instant endpoint `POST /api/custom_crop` to cut rect coordinates directly from source CBZ/ZIP canvas, generate thumbnails, save `.txt` sidecars, and register directly into the approved dataset gallery without manual external image editing.
 - **One-Click Export**: Sync approved images and `.txt` sidecars directly to the Kohya LoRA training folder.
+- **Master-Derived Non-Destructive Annotation Suite (Label Studio)**:
+  - For preserving uncropped master artworks/spreads while annotating multi-crop regions, see `references/label-studio-bbox-workflow.md` (Label Studio local storage setup, XML labeling template for framing, and automated export script).
+- **Macro Close-Up Bias Prevention (Framing Expansion)**:
+  - When annotating focused concepts, items, or attire details, training solely on tight macro bounding boxes causes severe close-up bias on inference.
+  - Annotate an expanded bounding box (`<Label> Expanded`) covering character upper-body / cowboy shot context.
+  - During captioning, strip synonymous/adjacent concepts from target crops so the trigger token absorbs the concept, while retaining adjacent tags on non-target or hybrid devices.
+- **Manga Monochrome Decoupling Invariant**:
+  When processing manga datasets with black-and-white art, never strip `monochrome` or `greyscale` from captions. Keeping them ensures the character trigger does not entangle permanently with monochrome drawing style, allowing clean cross-style and color rendering.
 
 ## 8. Inference Profiling & Optimization Stack
 

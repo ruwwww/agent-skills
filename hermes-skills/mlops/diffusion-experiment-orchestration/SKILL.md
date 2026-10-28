@@ -60,6 +60,21 @@ Never launch long training runs (e.g. 50k–100k steps) directly. A screening ru
 - **ModelEMA Warmup Trap:**
   - Flat `decay=0.9999` retains 37% initial random weights even at step 10,000, causing preview samples to look like washed-out static noise. Always use EMA warmup decay `min(decay, (1 + step) / (10 + step))` or check raw model weights for early diagnostics.
 
+### C. Few-Step & One-Step Generation (Priming Two-Stage Framework - arXiv:2610.20331)
+- **First-Class Reproducibility Rule:** When reproducing or validating a paper, ALWAYS strictly adhere to the official published architecture and pipeline. Never substitute core architectural components with ad-hoc heuristics (e.g. bypassing feature encoders or flattening raw latents) unless explicitly requested.
+- **The Few-Step Truncation Trap:** Standard flow matching models taking large steps ($dt=1.0$ or $dt=0.25$) output the conditional MMSE mean — resulting in ghost-like, blurry images devoid of fine textures.
+- **Two-Stage Priming Protocol:**
+  - **Stage 1 (Reconstruction Priming):** Pre-train or fine-tune at fixed high corruption ($t_{\text{noise}} = 0.8$) predicting clean data directly ($\hat{x}_1 = x_t + t_{\text{noise}} \cdot v$) via Huber/SmoothL1 loss. This primes the model with single-step restoration inductive bias. Stage 1 alone already yields high-quality, natural, photorealistic samples under few-step sampling (e.g. 4-step Euler ODE) without mode collapse.
+  - **Stage 2 (Distributional Post-Training - Semantic Feature OT Mandatory):**
+    - Feed pure noise ($t=0$), predict single-step jump, and minimize unbiased feature-wise Sinkhorn Optimal Transport discrepancy against real data:
+      $$\mathcal{L}_{\text{dist}} = D_{\text{OT}}(P_{\text{live}}, P_{\text{real}}) - D_{\text{OT}}(P_{\text{live}}, P_{\text{neg}})$$
+    - **CRITICAL LATENT-SPACE PITFALL (Raw Latent Flattening vs Semantic Encoders):**
+      - NEVER compute Sinkhorn OT directly on flattened raw latent vectors ($z \in \mathbb{R}^{B \times (C \cdot H \cdot W)}$) or raw pixel intensities. Without frozen semantic encoders (e.g. ConvNeXt-V2, ViT-MAE, SigLIP, or DINOv2), optimal transport in raw feature space penalizes point-wise distance without semantic awareness.
+      - *Failure Symptom:* Flattened raw-latent OT induces severe mode distortion — resulting in mannequin-like "waxy/plastic" skin, flat pitch-black crushed shadows on hair, neon-saturated backgrounds, and blotchy chromatic rainbow noise in 1-step sampling.
+      - *Remedy:* Always decode latents to RGB ($x = \text{VAE.decode}(z)$) and pass through frozen semantic extractors before computing feature-wise transport cost matrix (`costs.append(_laplacian_cost(feat_q, feat_p, sigma))`) using Vector-Jacobian Product (VJP) backward pass. If frozen vision encoders cannot be used, stop at Stage 1 or use perceptual distillation (LPIPS + DINO).
+- **Empirical Validation:** 4-step Euler sampling with Stage 1 Priming achieves crisp, photorealistic face fidelity matching 50-step high NFE (12.5x compute speedup).
+- **VRAM Guardrails:** Keep pre-cached latents in CPU pinned memory and disable intermediate exit backward graphs during single-step endpoint training to run smoothly under $\le 4$ GB VRAM.
+
 ---
 
 ## 3. Experiment Tracking & Artifact Standard
@@ -74,6 +89,7 @@ Never launch long training runs (e.g. 50k–100k steps) directly. A screening ru
 ---
 
 ## 4. References & Linked Guides
+- `references/priming_few_step_two_stage_framework.md`: Mathematical formulation, Sinkhorn Optimal Transport discrepancy, and CelebA-HQ benchmark results for the Priming two-stage framework (arXiv:2610.20331).
 - `references/pixel_perceptual_supervision_guide.md`: Detailed math and implementation guide for PixelGen (arXiv:2602.02493) and Linum AI multi-objective loss (LPIPS, P-DINO, REPA, Noise Gating) and pure linear patch unpatchify.
 - `references/looped_stability_postmortem.md`: Analysis of recurrent activation compounding in Looped-DiT and QK-norm stabilization.
 - `templates/tracker.py`: Complete tracker template with dual W&B streaming and JSONL offline logging.

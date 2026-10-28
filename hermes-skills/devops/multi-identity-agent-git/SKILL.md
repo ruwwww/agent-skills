@@ -4,7 +4,7 @@ description: "Use when isolating agent Git identities on a shared machine."
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos]
+platforms: [linux, macos, windows]
 metadata:
   hermes:
     tags: [Git, GitHub, SSH, Agent-Identity, Machine-User, Automation]
@@ -79,6 +79,28 @@ git config user.email "<id>+<agent-name>@users.noreply.github.com"
 If the repository is owned by the human user or an organization:
 - Add the agent account as an explicit **Collaborator** with write access under **Settings -> Collaborators**.
 - Accept the invite from the agent's account session.
+
+## Alternative Workflow: GitHub CLI (`gh`) & HTTPS (Windows / Fastpath)
+
+When working on Windows or when SSH keys cannot be configured:
+1. **Login Agent Account via GitHub CLI:**
+   ```powershell
+   gh auth login
+   ```
+2. **Bind Git to GitHub CLI Credentials:**
+   ```powershell
+   gh auth setup-git
+   ```
+3. **Switch Between Multiple Accounts:**
+   ```powershell
+   gh auth switch --user <agent-username>
+   ```
+4. **Scope Repository Locally:**
+   ```powershell
+   git config user.name "<agent-name>"
+   git config user.email "<id>+<agent-name>@users.noreply.github.com"
+   ```
+   *Pitfall:* If Windows Credential Manager intercepts and forces the host human user credentials (causing 403 Permission Denied on push), re-run `gh auth setup-git` to force Git to route through `gh` helper instead of wincred.
 
 ---
 

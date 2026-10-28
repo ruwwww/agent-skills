@@ -13,7 +13,10 @@ When profiling, auditing, or optimizing diffusion models (DiT, Cosmos 2, Anima, 
    - Single forward ($B=1$) tests pure forward latency and baseline FLOPs.
    - Batched CFG ($B=2$) measures compute saturation when positive and negative conditionings run in a single tensor.
    - Always compare Batched CFG vs Sequential CFG ($2 \times B=1$) to determine batching efficiency and memory bandwidth tradeoffs.
-   - **Critical Diffusers vs ComfyUI CFG Discrepancy**: Diffusers modular pipelines (`AnimaLoopDenoiser`) iterate sequentially over `guider_state` ($2 \times B=1$ forward passes per step, accumulating launch latency to ~16.3s for 30 steps), whereas ComfyUI concatenates cond and uncond into a single $B=2$ batch ($1 \times B=2$ forward pass per step, cutting total passes from 60 to 30 and achieving ~12–13s on RTX 5060 Ti). Standalone sovereign runners should always concatenate conditionings to replicate $B=2$ throughput.
+   - **Diffusers vs ComfyUI CFG & Batching Discrepancy (Blackwell SM120 Findings)**:
+     * *Transformer Level*: Diffusers `AnimaLoopDenoiser` runs sequentially ($2 \times B=1$), while ComfyUI batches into $B=2$. However, on mid-tier Blackwell GPUs (RTX 5060 Ti 128-bit bus, 36 SMs), $B=2$ transformer forward is **2.8% slower** (537.65 ms vs 523.20 ms) because 1MP latents already saturate SM occupancy, and $B=2$ doubles activation traffic and register pressure.
+     * *Timing Boundary*: ComfyUI's 12–13s measurement excludes text encoding and VAE decoding synchronization, measuring only the KSampler loop with persistent zero-allocation buffer reuse.
+     * *VAE Decode Latency Bottleneck at Multi-Batch*: In `AutoencoderKLQwenImage`, decoding latency at $B=2$ spikes from **565 ms ($B=1$) to 1,139 ms ($B=2$)** (+574 ms). On Turbo/distilled pipelines (4–8 steps, ~2.5–3.0s DiT time), VAE decoding at $B=2$ dominates total latency, causing **2x batch (CFG=1, ~4.1s) to be slower than 1x batch (CFG>1, ~3.6s)**. Optimizing VAE decoding (or fusing in Mirage MPK) is mandatory for multi-batch scaling.
 
 ## Measurement Protocol
 - **Kernel-level Timing**: Use `torch.cuda.Event(enable_timing=True)` with proper warmup (2–5 iterations) and multiple test iterations (4–10 iterations).
@@ -83,6 +86,7 @@ When profiling, auditing, or optimizing diffusion models (DiT, Cosmos 2, Anima, 
 - `references/anima_lora_training_guide.md` — Complete training recipe, SageAttention backward blocker analysis, alpha scaling rules, and ComfyUI LoRA conversion.
 - `references/modelopt_ptq_anima_guide.md` — NVIDIA Model Optimizer calibrated PTQ (FP8/NVFP4) for Anima DiT, module filter/exclusion semantics, and dual-branch CFG trajectory calibration.
 - `references/anima_runtime_profiling_and_gemm_acceleration.md`
+- `references/anima_w4a8_w8a8_vae_benchmarks.md` — Anima DiT W4A8 vs W8A8 latency/reconstruction benchmark, and VAE high-res convolution im2col vs Implicit GEMM analysis on RTX 5060 Ti SM120.
 - `references/flow_matching_lagrangian_jacobian.md` — Lagrangian formulation of Flow Matching, denoiser Jacobian curvature dynamics, and decoupled auxiliary curvature head designs for diffusion solvers.
 - `references/latent_flow_matching_and_guidance_scaling.md` — Latent Flow Matching training with pre-cached latents, DINOv2 semantic cluster conditioning, CFG dynamics, and DiT width scaling.
 - `references/looped_dit_architecture_and_experiment_standard.md` — Looped-DiT 50M architecture (XSA, deep supervision, loop_split=(2,4,2) with 20 effective layers), standardized experiment tracking layout, and numerical stabilization rules against BPTT divergence.

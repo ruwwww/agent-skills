@@ -197,21 +197,33 @@ When compiling standalone printable / ATS-compliant PDF resumes from Markdown/HT
 
 ---
 
-### Pitfall 7: YAML Front Matter Unquoted Colons & Unescaped Quotes Cause Silent Page Drops (404)
+### Pitfall 7: YAML Front Matter Formatting Traps (Delimiter Collation & Nested Quotes)
 
 **Symptom:**
 After adding or editing a page in al-folio (e.g. `_pages/gallery.md`), the URL returns 404 "Page not found" or redirects home, despite the GitHub Actions deploy job passing with green status (`exit 0`).
 
 **Root Cause:**
-1. **Unquoted colons with spaces:** Any unquoted scalar containing `: ` (e.g. `alt: Hirara (Mobile Legends: Bang Bang)`) is parsed as an invalid nested mapping key:
+1. **Front Matter Delimiter Collation (`---layout: page`):**
+   When programmatically rewriting or dumping YAML front matter (e.g. with `yaml.dump()`), concatenating strings without an explicit newline immediately following the opening delimiter (e.g., `---` + `layout: page` -> `---layout: page`) causes Jekyll to fail to recognize the block as front matter. Jekyll treats the entire file as an unrendered static document or skips rendering permalink routes completely, resulting in an immediate 404 on GitHub Pages.
+2. **Unquoted colons with spaces:** Any unquoted scalar containing `: ` (e.g. `alt: Hirara (Mobile Legends: Bang Bang)`) is parsed as an invalid nested mapping key:
    `YAML Exception: (<unknown>): mapping values are not allowed in this context`.
-2. **Unescaped nested quotes:** Using unescaped double quotes inside double-quoted strings (e.g. `alt: "Selena "Silverbolt" Raiko (The Aspirants - Mobile Legends: Bang Bang)"`) breaks YAML parser syntax:
+3. **Unescaped nested quotes:** Using unescaped double quotes inside double-quoted strings (e.g. `alt: "Selena "Silverbolt" Raiko (The Aspirants - Mobile Legends: Bang Bang)"`) breaks YAML parser syntax:
    `YAML Exception reading .../_pages/gallery.md: (<unknown>): did not find expected key while parsing a block mapping`.
 
-In both cases, Jekyll logs a warning during `Install and Build` and skips generating the affected page entirely into `_site/`, while the subsequent `Deploy` step still succeeds and pushes the missing page state to `gh-pages`.
+In all these cases, Jekyll either silently drops or fails to parse the affected page into `_site/`, while the subsequent `Deploy` step still succeeds and pushes the missing page state to `gh-pages`.
 
 **Resolution:**
-1. **Proper Quoting & Naming Rules:**
+1. **Always Ensure Isolated `---` Delimiters on Their Own Lines:**
+   When editing or writing markdown front matter:
+   ```markdown
+   ---
+   layout: page
+   title: gallery
+   permalink: /gallery/
+   ---
+   ```
+   If using Python `yaml.dump()` to rewrite front matter, always ensure an explicit newline after `---`: `new_content = "---\n" + new_fm + "---\n" + body`.
+2. **Proper Quoting & Naming Rules:**
    - **Never use quotation marks (`""`) in character names or alt descriptions:** Character titles, aliases, skins, and nicknames must NOT be wrapped in quotes (e.g., write `Selena Silverbolt Raiko`, NOT `Selena "Silverbolt" Raiko`). This completely avoids nested quote syntax collisions and respects user portfolio conventions.
    - Always wrap values containing colons `: ` in outer double quotes:
      ```yaml
@@ -220,12 +232,12 @@ In both cases, Jekyll logs a warning during `Install and Build` and skips genera
          alt: "Selena Silverbolt Raiko (The Aspirants - Mobile Legends: Bang Bang)"
      ```
    - Quote any scalar containing colons `: `, brackets `[]`, braces `{}`, or question marks `?`.
-2. **Pre-commit sanity check:**
+3. **Pre-commit sanity check:**
    Validate YAML front matter using Python before committing/pushing:
    ```bash
    python3 -c "import yaml; yaml.safe_load(open('_pages/gallery.md').read().split('---')[1])"
    ```
-3. **Verify live permalink:**
+4. **Verify live permalink:**
    Always verify the live page with `curl -s -I https://<user>.github.io/<path>/` to ensure HTTP 200 OK and check `<title>` to confirm it did not render a 404.
 
 ---
