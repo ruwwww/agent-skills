@@ -1,0 +1,11 @@
+{
+  "name": "stud-ui-clean-roblox",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "StudUI": { "$path": "src/StudUI.luau" },
+      "StudMotion": { "$path": "src/StudMotion.luau" },
+      "CheckUIIcons": { "$path": "src/CheckUIIcons.luau" }
+    }
+  }
+}
